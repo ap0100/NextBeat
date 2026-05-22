@@ -1,4 +1,5 @@
-# MIG-Intelegentni-Sistemi_shared_repo
+# NextBeat <img width="27" height="27" alt="logo" src="https://github.com/user-attachments/assets/d931e802-066b-404d-b8de-f1bedf33d8b5" />
+
 Делови:
 - Сензор што мери пулс и кислород во крвта (MAX30102)
 - Raspberry Pi4 Model B
