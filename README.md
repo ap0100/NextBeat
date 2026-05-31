@@ -4,7 +4,7 @@
 - Сензор што мери пулс и кислород во крвта (MAX30102)
 - Raspberry Pi4 Model B
 - TFT GC9A01 Round Display
-- Копчиња
+- Active Cooler за Pi
 - Жици
 - Кутија
 
