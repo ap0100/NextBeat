@@ -130,8 +130,11 @@ def build_features(hr_list, spo2_list):
     hr_mean=hr_win.mean()
     spo2_mean=spo2_win.mean()
     def safe_corr(w):
-        if w.std()==0: return 0.0
-        r=np.corrcoef(w[:-1], w[1:])[0,1]
+        if len(w)<2: return 0.0
+        a, b=w[:-1]-w[:-1].mean(), w[1:]-w[1:].mean()
+        denom=np.sqrt((a*a).sum() * (b*b).sum())
+        if denom==0: return 0.0
+        r=(a*b).sum() / denom
         return float(r) if np.isfinite(r) else 0.0
     feats=(
         list(hr_win-hr_mean) + list(spo2_win-spo2_mean) +
