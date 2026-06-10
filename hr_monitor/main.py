@@ -118,25 +118,44 @@ sensor=MAX30102()
 sensor.setup()
 
 #--MODEL---------------
-bundle=joblib.load('predict_30s_multi.pkl')
+bundle=joblib.load('predict_short_multi.pkl')
 model=bundle['model']
+scaler=bundle['scaler']
 N_FEATS=bundle['n_features']
+PRED_MODE=bundle.get('mode', 'absolute')
 
 def build_features(hr_list, spo2_list):
     hr_win=np.array(hr_list, dtype=float)
     spo2_win=np.array(spo2_list, dtype=float)
-
-    feats=(list(hr_win) + list(spo2_win) + [
-        hr_win.mean(), hr_win.std(), float(hr_win.max() - hr_win.min()),
-        float(hr_win[-1] - hr_win[0]),
-        spo2_win.mean(), spo2_win.std(), float(spo2_win.max() - spo2_win.min()),
-        float(spo2_win[-1] - spo2_win[0]),
-    ])
-    arr=np.array(feats).reshape(1, -1)
-
+    hr_mean=hr_win.mean()
+    spo2_mean=spo2_win.mean()
+    def safe_corr(w):
+        if w.std()==0: return 0.0
+        r=np.corrcoef(w[:-1], w[1:])[0,1]
+        return float(r) if np.isfinite(r) else 0.0
+    feats=(
+        list(hr_win-hr_mean) + list(spo2_win-spo2_mean) +
+        [
+            hr_mean, hr_win.std(),
+            float(hr_win.max()-hr_win.min()),
+            float(hr_win[-1]-hr_win[0]),
+            float(hr_win[-1]-hr_win[-10]),
+            float(hr_win[-1]-hr_win[-25]),
+            float(np.polyfit(np.arange(LOGS), hr_win, 1)[0]),
+            safe_corr(hr_win),
+            spo2_mean, spo2_win.std(),
+            float(spo2_win.max()-spo2_win.min()),
+            float(spo2_win[-1]-spo2_win[0]),
+            float(spo2_win[-1]-spo2_win[-10]),
+            float(spo2_win[-1]-spo2_win[-25]),
+            float(np.polyfit(np.arange(LOGS), spo2_win, 1)[0]),
+            safe_corr(spo2_win),
+        ]
+    )
+    arr=np.array(feats).reshape(1,-1)
     if arr.shape[1]!=N_FEATS:
         raise ValueError(f"Feature mismatch: model expects {N_FEATS}, got {arr.shape[1]}. Redeploy the .pkl.")
-    return arr
+    return scaler.transform(arr)
 
 #--CONFIG--------------------------
 FS=50#Hz
@@ -264,8 +283,8 @@ while True:
         if not baseline_established and len(live_hr)==LOGS:
             hr_arr=np.array(list(live_hr))
             spo2_arr=np.array(list(live_spo2))
-            hr_threshold=hr_arr.mean()   + 20
-            spo2_threshold=spo2_arr.mean() -  5
+            hr_threshold=hr_arr.mean()+20
+            spo2_threshold=spo2_arr.mean()-5
             baseline_established=True
             print(f"\nBaseline — HR={hr_arr.mean():.0f}±{hr_arr.std():.0f} |  SpO2={spo2_arr.mean():.0f}±{spo2_arr.std():.0f}")
             print(f"Thresholds: HR>{hr_threshold:.0f} | SpO2<{spo2_threshold:.0f}")
@@ -277,14 +296,18 @@ while True:
         if len(live_hr)==LOGS:
             try:
                 pred=model.predict(build_features(list(live_hr), list(live_spo2)))[0]
-                pred_hr=int(round(pred[0]))
-                pred_spo2=int(round(pred[1]))
+                if PRED_MODE == 'delta':
+                    pred_hr=int(round(np.clip(smooth_hr   + pred[0], 40, 200)))
+                    pred_spo2=int(round(np.clip(smooth_spo2 + pred[1], 80, 100)))
+                else:
+                    pred_hr=int(round(np.clip(pred[0], 40, 200)))
+                    pred_spo2=int(round(np.clip(pred[1], 80, 100)))
 
-                if baseline_established and (pred_hr > hr_threshold or pred_spo2 < spo2_threshold):
+                if baseline_established and (pred_hr>hr_threshold or pred_spo2<spo2_threshold):
                     now=time.time()
-                    if now-last_alert_time > ALERT_COOLDOWN:
+                    if now-last_alert_time>ALERT_COOLDOWN:
                         threading.Thread(target=send_email_alert, args=(pred_hr, pred_spo2), daemon=True).start()
-                        last_alert_time = now
+                        last_alert_time=now
                     anomaly_status="PREDICTED SPIKE"
             except Exception as e:
                 print(f"\n[PREDICT] {e}")
