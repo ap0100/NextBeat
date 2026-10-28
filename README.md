@@ -4,11 +4,12 @@ A portable, AI-driven medical prototype that reads optical blood volume (PPG) fr
 
 Here's the current look of the project, with one image of it working:
 <div>
-  <img src="design/images/nextbeat_box_front_side.jpg" width="200"/>
-  <img src="design/images/nextbeat_box_back_side.jpg" width="200"/>
-  <img src="design/images/nextbeat_box_fron_side_working" width="200"/>
+  <img src="design/images/nextbeat_box_front_view.png" width="180"/>
+  <img src="design/images/nextbeat_box_back_view.png" width="210"/>
+  <img src="design/images/nextbeat_box_working_view.png" width="200"/>
 </div>
-*(Note: The AI successfully predicts the timing of the QRS spikes, though the morphology is slightly stylized due to the mechanical nature of PPG signals vs. electrical ECG signals).*
+<br/>
+<b>Note:</b> The AI successfully predicts the timing of the QRS spikes, though the morphology is slightly stylized due to the mechanical nature of PPG signals vs. electrical ECG signals
 
 ---
 
@@ -49,10 +50,20 @@ Because training on all 148 patients (444 files) would instantly crash Google Co
 - Custom hand-painted cardboard enclosure
 
 **Pins Used:**
-| Component | Pins |
-|---|---|
-| MAX30102 (I2C) | SDA (GPIO 3), SCL (GPIO 5), VIN (GPIO 17), GND (GPIO 9) |
-| GC9A01 (SPI) | SDA (GPIO 19), SCL (GPIO 23), CS (GPIO 24), DC (GPIO 22), RST (GPIO 13), GND (GPIO 6), VCC (GPIO 1) |
+
+| Component | Signal | Physical Pin | Pi GPIO |
+|---|---|---|---|
+| MAX30102 (I2C) | SDA | Pin 3 | GPIO 2 |
+| MAX30102 (I2C) | SCL | Pin 5 | GPIO 3 |
+| MAX30102 (I2C) | VIN | Pin 17 | 3.3V Power |
+| MAX30102 (I2C) | GND | Pin 9 | GND |
+| GC9A01 (SPI) | SDA (MOSI) | Pin 19 | GPIO 10 |
+| GC9A01 (SPI) | SCL (SCLK) | Pin 23 | GPIO 11 |
+| GC9A01 (SPI) | CS | Pin 24 | GPIO 8 |
+| GC9A01 (SPI) | DC | Pin 22 | GPIO 25 |
+| GC9A01 (SPI) | RST | Pin 13 | GPIO 27 |
+| GC9A01 (SPI) | GND | Pin 6 | GND |
+| GC9A01 (SPI) | VCC | Pin 1 | 3.3V Power |
 
 ---
 
@@ -67,7 +78,7 @@ We achieved a **Validation Mean Absolute Error (MAE) of 8.8%** during training, 
 
 ---
 
-## 💻 Setup & Software Stack
+## 💻 Setup & Software
 **Raspberry Pi OS (64-bit) & Python 3.11:**
 1. **Virtual Environment:** We use a Python 3.11 virtual environment (`myenv`). Do **not** use the system Python 3.13, or half the ML libraries won't compile.
 2. **Framebuffer Display:** The GC9A01 is driven directly via `/dev/fb0` using the `Pillow` (PIL) library, converting images to RGB565 format on the fly.
@@ -79,6 +90,8 @@ We achieved a **Validation Mean Absolute Error (MAE) of 8.8%** during training, 
 cd ~/hr_monitor
 source ~/myenv/bin/activate
 python3 main.py
+```
+**Note:** Refer to [`raspberry_pi_4_model_b.txt`](notes/raspberry_pi_4_model_b.txt) for detailed setup instructions and commands for configuring and running the project on your personal Raspberry Pi 4 Model B and laptop.
 
 ---
 
@@ -87,11 +100,10 @@ python3 main.py
 | Problem | Fix |
 |---|---|
 | `ModuleNotFoundError: No module named 'tflite_runtime'` | You are not in the virtual environment. Run `source ~/myenv/bin/activate`. |
-| Dimension mismatch: Got 3 but expected 2 | The TFLite model swapped the PPG and Demographic inputs. Swap `PPG_INDEX` and `DEMO_INDEX`. |
+| Dimension mismatch: Got 3 but expected 2 | The TFLite model swapped the PPG and Demographic inputs. Swap `PPG_INDEX` and `DEMO_INDEX` values. |
 | A module compiled using NumPy 1.x cannot be run in NumPy 2.4.6 | Run `pip install "numpy<2"` to downgrade. |
 | The ECG wave looks like a square comb | Apply the sharpening math (`** 2.5`) in `write_display()` and decrease the line width to `1`. |
 | Screen is completely black / Permission Denied | Run `sudo chmod 777 /dev/fb0` or ensure your user is in the `video` group. |
-| The Pi overheats and freezes | Plug in the active cooler. ML inference on a Pi 4 runs hot. |
 
 ---
 
