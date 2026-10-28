@@ -95,7 +95,7 @@ cd ~/hr_monitor
 source ~/myenv/bin/activate
 python3 main.py
 ```
-**Note:** Refer to [`raspberry_pi_4_model_b.txt`](notes/raspberry_pi_4_model_b.txt) for detailed setup instructions and commands for configuring and running the project on your personal Raspberry Pi 4 Model B and laptop.
+**Note:** Refer to [`raspberry_pi4_model_b.txt`](notes/raspberry_pi4_model_b.txt) for detailed setup instructions and commands for configuring and running the project on your personal Raspberry Pi 4 Model B and laptop.
 
 ---
 
