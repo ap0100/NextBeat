@@ -1,4 +1,8 @@
-# NextBeat: AI-Powered ECG Reconstruction from PPG <img width="27" height="27" alt="logo" src="design/images/logo.png" />
+<h1>
+  NextBeat <img width="27" height="27" alt="logo" src="design/images/logo.png" />
+  <br />
+  <sub>AI-Powered ECG Reconstruction from PPG</sub>
+</h1>
 
 A portable, AI-driven medical prototype that reads optical blood volume (PPG) from a fingertip and uses a custom neural network to reconstruct and display a synthetic ECG waveform in real-time.
 
