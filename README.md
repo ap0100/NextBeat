@@ -29,7 +29,7 @@ We trained a **1D U-Net Convolutional Encoder-Decoder** in TensorFlow to transla
 ---
 
 ## 📊 The Dataset
-To train the AI, we used the public **Mendeley ECG+PPG Dataset** (148 subjects, simultaneous 1-lead ECG and dual-wavelength PPG).
+To train the AI, we used the public <a href="https://data.mendeley.com/datasets/pz2zzr8vhm/1">**Mendeley ECG+PPG Dataset**</a> (148 subjects, simultaneous 1-lead ECG and dual-wavelength PPG).
 
 Because training on all 148 patients (444 files) would instantly crash Google Colab's RAM, we used a subset:
 *   **Training Subset:** 30 patients (3 different states each = 90 CSV files).
@@ -71,7 +71,7 @@ Because training on all 148 patients (444 files) would instantly crash Google Co
 
 ---
 
-## 📊 Analysis: How Accurate is the AI?
+## 📈 Analysis: How Accurate is the model?
 We achieved a **Validation Mean Absolute Error (MAE) of 8.8%** during training, but accuracy must be split into two categories:
 
 *   **Timing (Rhythm) Accuracy:** High (~95%). The AI is incredibly accurate at predicting *when* your heart is beating. It places the green spikes at the exact millisecond your pulse hits.
