@@ -31,7 +31,7 @@ We trained a **1D U-Net Convolutional Encoder-Decoder** in TensorFlow to transla
 ## 📊 The Dataset
 To train the AI, we used the public **Mendeley ECG+PPG Dataset** (148 subjects, simultaneous 1-lead ECG and dual-wavelength PPG).
 
-Because training on all 148 patients (444 files) would instantly crash Google Colab's RAM, we strategically used a subset:
+Because training on all 148 patients (444 files) would instantly crash Google Colab's RAM, we used a subset:
 *   **Training Subset:** 30 patients (3 different states each = 90 CSV files).
 *   **Preprocessing:** The original data was recorded at 250 Hz. We applied `scipy.signal.resample` to downsample it to **100 Hz** (so a 10-second window = 1000 samples). This reduces the Pi's CPU load while keeping the sharp ECG spikes intact.
 *   **Windowing:** The signals were sliced into 10-second windows with a 50% overlap, resulting in exactly **3,060 training windows**.
