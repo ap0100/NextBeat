@@ -4,28 +4,12 @@ from collections import deque
 from PIL import Image, ImageDraw, ImageFont
 from max30102.max30102 import MAX30102
 from my_hrcalc import calculate_hr_and_spo2
-import joblib
-import threading
-import smtplib
-from email.message import EmailMessage
-import math
 
-#--Prediction settings----------------------------
-LOGS=50
-ALERT_COOLDOWN=300
-DEFAULT_HR_LIMIT=120
-DEFAULT_SPO2_LIMIT=94
-
-#--Email settings-----------------------
-EMAIL_SENDER="nextbeat_alert@gmail.com"
-EMAIL_RECIPIENT="pecevska9@gmail.com"
-
+# Attempt to load TFLite
 try:
-    with open('email_pass.txt', 'r') as f:
-        EMAIL_PASSWORD=f.read().strip()
-except FileNotFoundError:
-    EMAIL_PASSWORD=""
-    print("WARNING: email_pass.txt not found. Email alerts disabled.")
+    import tflite_runtime.interpreter as tflite
+except ImportError:
+    import tensorflow.lite as tflite
 
 #--BITMAP LOGO-----------------------
 heart_bmp = bytes([0x01, 0xF0, 0x0F, 0x80, 0x06, 0x1C, 0x38, 0x60, 0x18, 0x06, 0x60, 0x18, 0x10, 0x01, 0x80, 0x08, 0x20, 0x01, 0x80, 0x04, 0x40, 0x00, 0x00, 0x02, 0x40, 0x00, 0x00, 0x02, 0xC0, 0x00, 0x08, 0x03, 0x80, 0x00, 0x08, 0x01, 0x80, 0x00, 0x18, 0x01, 0x80, 0x00, 0x1C, 0x01, 0x80, 0x00, 0x14, 0x00, 0x80, 0x00, 0x14, 0x00, 0x80, 0x00, 0x14, 0x00, 0x40, 0x10, 0x12, 0x00, 0x40, 0x10, 0x12, 0x00, 0x7E, 0x1F, 0x23, 0xFE, 0x03, 0x31, 0xA0, 0x04, 0x01, 0xA0, 0xA0, 0x0C, 0x00, 0xA0, 0x0, 0x08, 0x00, 0x60, 0xE0, 0x10, 0x00, 0x20, 0x60, 0x20, 0x06, 0x00, 0x40, 0x60, 0x03, 0x00, 0x40, 0xC0, 0x01, 0x80, 0x01, 0x80, 0x00, 0xC0, 0x03, 0x00, 0x00, 0x60, 0x06, 0x00, 0x00, 0x30, 0x0, 0x00, 0x00, 0x08, 0x10, 0x00, 0x00, 0x06, 0x60, 0x00, 0x00, 0x03, 0xC0, 0x00, 0x00, 0x01, 0x80, 0x00])
@@ -33,7 +17,6 @@ heart_bmp = bytes([0x01, 0xF0, 0x0F, 0x80, 0x06, 0x1C, 0x38, 0x60, 0x18, 0x06, 0
 oximeter_bmp=bytes([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x08, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x24, 0x00, 0x00, 0x00, 0x22, 0x00, 0x00, 0x00, 0x42, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00, 0x80, 0x80, 0x00, 0x00, 0x80, 0x80, 0x00, 0x01, 0x00, 0x80, 0x00, 0x01, 0x00, 0x40, 0x00, 0x02, 0x00, 0x40, 0x00, 0x02, 0x00, 0x40, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x40, 0x30, 0x00, 0x01, 0x60, 0x88, 0x00, 0x01, 0x98, 0x85, 0x80, 0x00, 0xC0, 0x04, 0x40, 0x00, 0x3C, 0x04, 0x00, 0x00, 0x00, 0x84, 0x80, 0x00, 0x00, 0xC9, 0x00, 0x00, 0x00, 0x20, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00])
 
 def render_bitmap(bitmap_bytes, width, height, color, flip_horizontal=False):
-    #Convert a 1‑bit monochrome bitmap (MSB first) into a PIL Image
     img=Image.new("RGB", (width, height), (0, 0, 0))
     draw=ImageDraw.Draw(img)
     for y in range(height):
@@ -55,57 +38,55 @@ FB_PATH = "/dev/fb0"
 try:
     txt_font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
     small_font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
-    label_font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
     status_font=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 12)
 except:
-    txt_font=small_font = ImageFont.load_default()
+    txt_font=small_font=status_font=ImageFont.load_default()
 
 logo_h=render_bitmap(heart_bmp,32,32,(252, 86, 83))
 logo_o=render_bitmap(oximeter_bmp,32,32,(71, 252, 219))
 logo_o=logo_o.resize((50,50),Image.BOX)
 
-_sine_points = [(50 + x, 180 + 10 * math.sin(x * 0.2)) for x in range(140)]
-
-def write_display(hr_str, spo2_str, status_str, pred_hr_str=None, pred_spo2_str=None, ir_history=None):
+def write_display(hr_str, spo2_str, status_str, ecg_history=None):
     img=Image.new("RGB", (WIDTH, HEIGHT), (0, 0, 0))
     draw=ImageDraw.Draw(img)
     draw.ellipse([5, 5, 235, 235], fill=(0,0,0))
 
-    #Logos(bmp)
     img.paste(logo_h,(66,42))
     img.paste(logo_o,(62,75))
 
-    #BPM val
     draw.text((111, 47), hr_str, font=small_font, fill=(0, 255, 120))
-
-    #SpO_2 val
     draw.text((112, 85), spo2_str, font=small_font, fill=(80, 180, 255))
 
-    #Waveform
-    if ir_history and len(ir_history) > 5:
-        samples  = list(ir_history)[-130:]
+    #Reconstructed ECG Waveform
+    if ecg_history and len(ecg_history) > 5:
+        # Take 180 points to stretch across the screen
+        samples = list(ecg_history)[-180:]
         min_val, max_val = min(samples), max(samples)
+
+        # Draw a faint baseline grid in the background (moved to y=185)
+        draw.line([(30, 185), (210, 185)], fill=(0, 80, 0), width=1)
+
         if max_val > min_val:
-            rng    = max_val - min_val
-            pts    = [(56 + i, 160 - (s - min_val) / rng * 20)
-                      for i, s in enumerate(samples)]
-            draw.line(pts, fill=(100, 255, 100), width=2)
+            rng = max_val - min_val
+            pts = []
+            for i, s in enumerate(samples):
+                # 1. Normalize (between 0 and 1)
+                norm_val = (s - min_val) / rng
+                # 2. Sharpen (square the val to pull the baseline down)
+                sharp_val = norm_val ** 2.5
+                # 3. Draw (baseline at 185, peaks shoot up 55 pixels)
+                y = 185 - (sharp_val * 55)
+                pts.append((30 + i, y))
+
+            draw.line(pts, fill=(100, 255, 100), width=1)
         else:
-            draw.line([(56, 160), (186, 160)], fill=(100, 255, 100), width=2)
+            draw.line([(30, 185), (210, 185)], fill=(100, 255, 100), width=1)
     else:
-        draw.line(_sine_points, fill=(100, 255, 100), width=2)
+        draw.line([(30, 185), (210, 185)], fill=(100, 255, 100), width=1)
 
-    #Prediction text
-    if pred_hr_str and pred_spo2_str:
-        pred_text=f"Pred: {pred_hr_str} bpm / {pred_spo2_str}%"
-        draw.text((58,180),pred_text, font=status_font, fill=(149, 245, 221))
-
-    #Status line
-    bb2=draw.textbbox((0,-5), status_str, font=status_font)
+    bb2=draw.textbbox((0,-2.5), status_str, font=status_font)
     draw.text(((WIDTH-(bb2[2]-bb2[0])) // 2, 210), status_str, font=status_font, fill=(255, 174, 0))
 
-
-    #Convert to RGB565 and write to framebuffer
     pixels = np.array(img)
     r = (pixels[:,:,0] >> 3).astype(np.uint16)
     g = (pixels[:,:,1] >> 2).astype(np.uint16)
@@ -117,68 +98,38 @@ def write_display(hr_str, spo2_str, status_str, pred_hr_str=None, pred_spo2_str=
 sensor=MAX30102()
 sensor.setup()
 
-#--MODEL---------------
-bundle=joblib.load('predict_short_multi.pkl')
-model=bundle['model']
-scaler=bundle['scaler']
-N_FEATS=bundle['n_features']
-PRED_MODE=bundle.get('mode', 'absolute')
+#--DEEP LEARNING MODEL---------------
+MODEL_PATH = 'ppg_to_ecg_model.tflite'
+interpreter = tflite.Interpreter(model_path=MODEL_PATH)
+interpreter.allocate_tensors()
 
-def build_features(hr_list, spo2_list):
-    hr_win=np.array(hr_list, dtype=float)
-    spo2_win=np.array(spo2_list, dtype=float)
-    hr_mean=hr_win.mean()
-    spo2_mean=spo2_win.mean()
-    def safe_corr(w):
-        if len(w)<2: return 0.0
-        a, b=w[:-1]-w[:-1].mean(), w[1:]-w[1:].mean()
-        denom=np.sqrt((a*a).sum() * (b*b).sum())
-        if denom==0: return 0.0
-        r=(a*b).sum() / denom
-        return float(r) if np.isfinite(r) else 0.0
-    feats=(
-        list(hr_win-hr_mean) + list(spo2_win-spo2_mean) +
-        [
-            hr_mean, hr_win.std(),
-            float(hr_win.max()-hr_win.min()),
-            float(hr_win[-1]-hr_win[0]),
-            float(hr_win[-1]-hr_win[-10]),
-            float(hr_win[-1]-hr_win[-25]),
-            float(np.polyfit(np.arange(LOGS), hr_win, 1)[0]),
-            safe_corr(hr_win),
-            spo2_mean, spo2_win.std(),
-            float(spo2_win.max()-spo2_win.min()),
-            float(spo2_win[-1]-spo2_win[0]),
-            float(spo2_win[-1]-spo2_win[-10]),
-            float(spo2_win[-1]-spo2_win[-25]),
-            float(np.polyfit(np.arange(LOGS), spo2_win, 1)[0]),
-            safe_corr(spo2_win),
-        ]
-    )
-    arr=np.array(feats).reshape(1,-1)
-    if arr.shape[1]!=N_FEATS:
-        raise ValueError(f"Feature mismatch: model expects {N_FEATS}, got {arr.shape[1]}. Redeploy the .pkl.")
-    return scaler.transform(arr)
+input_details = interpreter.get_input_details()
+output_details = interpreter.get_output_details()
+
+# TFLite sorts inputs alphabetically by name: 'demo_input' is 0, 'ppg_input' is 1
+DEMO_INDEX = 1
+PPG_INDEX = 0
+
+# Demographics (Age, Gender, Height, Weight, SBP, DBP)
+# Scaled to 0.0 (average person in dataset) for the demo
+DUMMY_DEMOGRAPHICS = np.zeros(input_details[DEMO_INDEX]['shape'], dtype=np.float32)
 
 #--CONFIG--------------------------
-FS=50#Hz
+FS=100 # Hz
 WINDOW_SEC=6
 WINDOW_SAMPLES=FS*WINDOW_SEC
-SLIDE_SAMPLES=10
+SLIDE_SAMPLES=25
 FINGER_THRESH=25000
+MODEL_INPUT_SIZE = 1000 # 10 seconds at 100Hz
 
-live_hr=deque(maxlen=LOGS)
-live_spo2=deque(maxlen=LOGS)
 ir_buf=deque(maxlen=WINDOW_SAMPLES)
 red_buf=deque(maxlen=WINDOW_SAMPLES)
 hr_history=deque(maxlen=6)
 spo2_history=deque(maxlen=6)
 samples_since_calc=0
 
-baseline_established=False
-hr_threshold=DEFAULT_HR_LIMIT
-spo2_threshold=DEFAULT_SPO2_LIMIT
-last_alert_time=0
+ppg_ml_buffer = deque(maxlen=MODEL_INPUT_SIZE)
+ecg_display_buffer = deque(maxlen=300)
 
 def get_status(hr, spo2):
     if spo2<94: return "LOW O2"
@@ -190,36 +141,16 @@ def fill_buffer():
     write_display("---", "---", "WARMING UP")
     ir_buf.clear()
     red_buf.clear()
+    ppg_ml_buffer.clear()
     while len(ir_buf) < WINDOW_SAMPLES:
         t0=time.time()
         red,ir=sensor.read_fifo()
         ir_buf.append(ir)
         red_buf.append(red)
+        ppg_ml_buffer.append(ir)
         wait=1.0/FS-(time.time()-t0)
         if wait>0:
             time.sleep(wait)
-
-def send_email_alert(pred_hr, pred_spo2):
-    if not EMAIL_PASSWORD:
-        return
-    try:
-        msg=EmailMessage()
-        msg.set_content(
-            f"NextBeat Alert!\n\n"
-            f"Predicted HR:   {pred_hr} bpm\n"
-            f"Predicted SpO2: {pred_spo2}%\n\n"
-            f"Preemptive warning based on recent trend.\n"
-            f"Time: {time.ctime()}"
-        )
-        msg["Subject"]="NextBeat: Predicted Spike Alert"
-        msg["From"]=EMAIL_SENDER
-        msg["To"]=EMAIL_RECIPIENT
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-            smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            smtp.send_message(msg)
-        print("[EMAIL] Alert sent.")
-    except Exception as e:
-        print(f"[EMAIL] Failed: {e}")
 
 #--MAIN-------------------------------------
 print("NextBeat — place finger on sensor.")
@@ -234,11 +165,11 @@ while True:
     red, ir=sensor.read_fifo()
     ir_buf.append(ir)
     red_buf.append(red)
+    ppg_ml_buffer.append(ir)
     samples_since_calc+=1
 
     #Finger check
     recent=list(ir_buf)[-50:]
-    recent_ir=list(ir_buf)[-140:]
 
     if np.mean(recent)<FINGER_THRESH:
         if displayed_hr is not None:
@@ -246,9 +177,8 @@ while True:
             displayed_hr=displayed_spo2=None
             hr_history.clear()
             spo2_history.clear()
-            live_hr.clear()
-            live_spo2.clear()
-            baseline_established=False
+            ecg_display_buffer.clear()
+            ppg_ml_buffer.clear()
             print("\nNo finger — waiting...")
         fill_buffer()
         samples_since_calc=0
@@ -262,13 +192,12 @@ while True:
         continue
 
     samples_since_calc=0
-    hr, hr_v, spo2, spo2_v=calculate_hr_and_spo2(
-        list(ir_buf), list(red_buf), fs=FS)
 
-    if hr_v:
-        hr_history.append(hr)
-    if spo2_v:
-        spo2_history.append(spo2)
+    # 1. Calculate standard HR and SpO2
+    hr, hr_v, spo2, spo2_v=calculate_hr_and_spo2(list(ir_buf), list(red_buf), fs=FS)
+
+    if hr_v: hr_history.append(hr)
+    if spo2_v: spo2_history.append(spo2)
 
     if not hr_history or not spo2_history:
         write_display("---", "---", "MEASURING")
@@ -278,55 +207,35 @@ while True:
         smooth_spo2=int(np.median(spo2_history))
         status=get_status(smooth_hr, smooth_spo2)
 
-        #Live history for prediction
-        live_hr.append(smooth_hr)
-        live_spo2.append(smooth_spo2)
+        # 2. Run the Deep Learning Model (Two inputs!)
+        if len(ppg_ml_buffer) == MODEL_INPUT_SIZE:
+            input_data = np.array(ppg_ml_buffer, dtype=np.float32).reshape(1, MODEL_INPUT_SIZE, 1)
 
-        #Baseline after first LOGS readings
-        if not baseline_established and len(live_hr)==LOGS:
-            hr_arr=np.array(list(live_hr))
-            spo2_arr=np.array(list(live_spo2))
-            hr_threshold=hr_arr.mean()+20
-            spo2_threshold=spo2_arr.mean()-5
-            baseline_established=True
-            print(f"\nBaseline — HR={hr_arr.mean():.0f}±{hr_arr.std():.0f} |  SpO2={spo2_arr.mean():.0f}±{spo2_arr.std():.0f}")
-            print(f"Thresholds: HR>{hr_threshold:.0f} | SpO2<{spo2_threshold:.0f}")
+            input_min, input_max = np.min(input_data), np.max(input_data)
+            if input_max > input_min:
+                input_data = (input_data - input_min) / (input_max - input_min)
 
-        #Predict if we have enough history
-        pred_hr=pred_spo2=None
-        anomaly_status=status
+            # Set Demographics (Index 0)
+            interpreter.set_tensor(input_details[DEMO_INDEX]['index'], DUMMY_DEMOGRAPHICS)
+            # Set PPG (Index 1)
+            interpreter.set_tensor(input_details[PPG_INDEX]['index'], input_data)
 
-        if len(live_hr)==LOGS:
-            try:
-                pred=model.predict(build_features(list(live_hr), list(live_spo2)))[0]
-                if PRED_MODE == 'delta':
-                    pred_hr=int(round(np.clip(smooth_hr   + pred[0], 40, 200)))
-                    pred_spo2=int(round(np.clip(smooth_spo2 + pred[1], 80, 100)))
-                else:
-                    pred_hr=int(round(np.clip(pred[0], 40, 200)))
-                    pred_spo2=int(round(np.clip(pred[1], 80, 100)))
+            interpreter.invoke()
+            ecg_output = interpreter.get_tensor(output_details[0]['index'])[0]
 
-                if baseline_established and (pred_hr>hr_threshold or pred_spo2<spo2_threshold):
-                    now=time.time()
-                    if now-last_alert_time>ALERT_COOLDOWN:
-                        threading.Thread(target=send_email_alert, args=(pred_hr, pred_spo2), daemon=True).start()
-                        last_alert_time=now
-                    anomaly_status="PREDICTED SPIKE"
-            except Exception as e:
-                print(f"\n[PREDICT] {e}")
+            for val in ecg_output[-SLIDE_SAMPLES:]:
+                ecg_display_buffer.append(val[0])
 
-        #Update display when values change
-        if smooth_hr!=displayed_hr or smooth_spo2!=displayed_spo2:
-            write_display(
-                f"{smooth_hr} bpm", f"{smooth_spo2}%", anomaly_status,
-                f"{pred_hr}"   if pred_hr   is not None else "--",
-                f"{pred_spo2}" if pred_spo2 is not None else "--",
-                recent_ir,
-            )
+        # 3. Update screen
+        write_display(
+            f"{smooth_hr} bpm", f"{smooth_spo2}%", status,
+            ecg_history=list(ecg_display_buffer)
+        )
+
+        if smooth_hr != displayed_hr or smooth_spo2 != displayed_spo2:
+            print(f"\rHR: {smooth_hr:3d} bpm | SpO2: {smooth_spo2:3d}% | [{status}]", end="", flush=True)
             displayed_hr=smooth_hr
             displayed_spo2=smooth_spo2
-
-        print(f"\rHR: {smooth_hr:3d} bpm | SpO2: {smooth_spo2:3d}% | [{anomaly_status}]", end="", flush=True)
 
     wait=1.0/FS-(time.time()-t0)
     if wait>0:

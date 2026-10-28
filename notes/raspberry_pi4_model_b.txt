@@ -1,0 +1,49 @@
+mypi = host name
+pi4B = username
+raspberry = password
+
+-rwxr-xr-x 1 root root 104 May 26 17:35 /mnt/userconf
+pi4B:/YMl21Dda9Wtiw2/e.m5hu8SFvkR4E6/.vkwsy1q8psPdiEl4d.T5hJTOnJvBCUDn3S1Necv1zkkI0SGnm5jMisF8ThKeRO4U/
+
+------------------------------------------------------------
+COMMANDS
+---------
+ssh pi4B@192.168.1.231 - to log into Pi
+ssh pi4B@10.42.0.100 - to log into Pi, when Pi is connected to laptop via ethernet cable
+watch -n 2 vcgencmd measure_temp -to monitor the temp of the Pi
+source ~/myenv/bin/activate - to enter virtual environment
+nano display_test.py - to create or edit file
+i2cdetect -y 1 - check if I2C is enabled (the sensor needs it)
+sudo raspi-config - to configure the pi
+scp somefile.py pi4B@10.42.0.194:~/hr_monitor/ - to transfer files from laptop to pi
+pip install -r requirements.txt - to install are required packages for the code to run
+
+
+sudo nmcli connection modify "Wired connection 1" ipv4.method shared
+sudo nmcli connection up "Wired connection 1" - let NetworkManager create a new default wired connection
+ip addr show enp3s0 - check ip for Wired connection 1
+sudo nmap -sn 10.42.0.0/24 - scan for the Pi
+
+notes:
+------
+- automate fan control – for the GPIO‑controlled fan, write a simple Python script that turns it on at 50°C and off at 45°C
+- add the requirements.txt into the hr_monitor folder in the pi's SD card, once you connect with the pi
+
+
+KEY SETUP STEPS AND INFO
+-------------------------
+*no need for virtual environment, once logged into pi, just do cd ~/hr_monitor, all codes are there and every library is installed
+
+for max30102: https://github.com/doug-burrell/max30102.git
+for tft gc9a01: write directly to the framebuffer (/dev/fb0):
+		-> once logged into pi, do sudo nano /boot/firmware/config.txt
+		-> add dtoverlay=gc9a01,width=240,height=240 at the end
+		-> make sure dtparam=i2c_arm=on and dtparam=spi=on or similar
+		-> in hr_monitor sudo apt-get install python3-pil, sudo apt install python3-smbus python3-numpy (or pip install pillow numpy smbus2 smbus)
+		
+
+to run code on the pi, simply write python3 fileanme.py in pi4B@192.168.1.231, in hr_monitor
+
+----------------------------------------------------------
+in myenv (the virtual environment) on pi4B@raspberrypi, in hr_monitor is the python driver named max30102.py that is neeeded:
+ssh pi4B@10.42.0.100 --> cd ~/hr_monitor source --> ~/myenv/bin/activate --> python3 main.py

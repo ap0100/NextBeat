@@ -1,0 +1,10 @@
+# Core dependencies for sensor, display, and ML
+joblib==1.4.2
+numpy==1.26.4
+Pillow==10.3.0
+scikit-learn==1.6.1
+smbus2==0.6.1
+=
+
+#the max30102 driver is in ~/hr_monitor/max30102/
+#eveything written on the display is done directly through the framebuffer
